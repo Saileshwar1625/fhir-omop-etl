@@ -1,0 +1,8 @@
+# Phase 0: none of this is used yet (Phase 0 is Docker + SQL only).
+# Pinned ahead of Phase 1 (FHIR ingestion) so the environment is reproducible
+# once that work starts — versions can be bumped later if there's a reason to.
+pandas==2.2.3
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36
+pytest==8.3.4
+python-dotenv==1.0.1

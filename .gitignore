@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Data (never commit patient-level data or large vocab files, even de-identified demo data)
+data/raw/*
+!data/raw/.gitkeep
+data/vocab/*
+!data/vocab/.gitkeep
+
+# Env / secrets
+.env
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

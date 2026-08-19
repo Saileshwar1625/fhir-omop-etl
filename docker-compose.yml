@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: omop_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omop_admin
+      POSTGRES_PASSWORD: omop_admin_pw   # dev only, change if you ever expose this beyond localhost
+      POSTGRES_DB: omop_cdm
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Scripts here run once, automatically, in alphabetical order, the FIRST time
+      # the container starts with an empty data volume (see README for how to re-run).
+      - ./sql/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omop_admin -d omop_cdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
