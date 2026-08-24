@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: omop_admin_pw   # dev only, change if you ever expose this beyond localhost
       POSTGRES_DB: omop_cdm
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       # Scripts here run once, automatically, in alphabetical order, the FIRST time
