@@ -12,54 +12,50 @@ behind it.
 - Postgres 16 running via Docker Compose (`docker-compose.yml`).
 - Full OMOP CDM v5.4 schema applied and verified: 39 tables, primary keys, foreign key
   constraints, and indices, all created automatically on container startup from
-  `sql/init/`. Verified with `scripts/verify_setup.sh` (checks table count, confirms the
-  5 in-scope tables exist, confirms PK/FK constraints applied).
-
-### Completed
-- Postgres 16 running via Docker Compose (`docker-compose.yml`). Host port mapped to 5433
-  to avoid a local port 5432 conflict — see `docs/design-doc.md`.
-- Full OMOP CDM v5.4 schema applied and verified: 39 tables, primary keys, foreign key
-  constraints, and indices, all created automatically on container startup from
   `sql/init/`. Verified with `scripts/verify_setup.sh`.
-- Phase 1 (Ingestion): FHIR NDJSON parsed into a `staging` schema via `scripts/load_staging.py`.
-  All 4 in-scope resource types loaded:
-  - `staging.patient`: 100 rows
-  - `staging.encounter`: 637 rows
-  - `staging.condition`: 5,051 rows
-  - `staging.observation`: 813,540 rows
-
-  Row counts independently verified against source NDJSON line counts for all 4 tables
-  (`scripts/verify_row_counts.py`) — exact match, nothing dropped. Data profiled: 0 missing
-  `birthDate`/`gender` across all patients; `Encounter.subject.reference` confirmed in
-  `"Patient/<id>"` format; 0 orphaned encounters.
+- Phase 1: parsed MIMIC-IV-FHIR NDJSON files into `staging` tables — 100 patients, 637
+  encounters, 5,051 conditions, 813,540 observations. Row counts independently verified
+  against source file line counts (`scripts/verify_row_counts.py`, all exact matches).
+  Profiled: 0 missing `birthDate`/`gender`, reference format confirmed as
+  `"Patient/<id>"`, 0 orphaned encounters.
+- Vocabulary load: `CONCEPT`/`VOCABULARY`/`DOMAIN`/`CONCEPT_CLASS` loaded from a targeted
+  Athena download (`scripts/load_vocab.sh`) — SNOMED, ICD9CM, ICD10CM, LOINC, RxNorm,
+  Gender, Race and Ethnicity Code Set, OMOP Ethnicity, OMOP Extension. Not a full
+  vocabulary load — `CONCEPT_ANCESTOR`/`CONCEPT_RELATIONSHIP`/`CONCEPT_SYNONYM`/
+  `DRUG_STRENGTH` deliberately excluded, not needed until Phase 3.
+- Phase 2: mapped and loaded `PERSON` (100 rows) and `VISIT_OCCURRENCE` (637 rows) from
+  staging into `cdm` (`sql/transform/`). Verified: row counts match source, gender/race/
+  ethnicity concept distributions reconcile exactly against source data, visit_concept_id
+  distribution reconciles exactly against source `Encounter.class` codes, 0 orphaned
+  visits (every `person_id` resolves to a real `cdm.person` row).
 
 ### In Progress
-- Nothing currently — ready to start Phase 2.
+- Nothing currently in progress — Phase 2 core scope is done; Phase 3 not started.
 
 ### Planned
-- Phase 2: map and load `PERSON` and `VISIT_OCCURRENCE` with tests (row counts, referential
-  integrity, no orphaned visits).
 - Phase 3: concept mapping — LOINC → `MEASUREMENT`, SNOMED → `CONDITION_OCCURRENCE`,
-  RxNorm → `DRUG_EXPOSURE` (stretch) — using OHDSI Athena standard vocabularies.
-- Phase 4: automated tests in CI (GitHub Actions), concept-mapping coverage % reported here,
-  one demonstration SQL query, `v1.0` tag.
-- Stretch (post-v1.0): wearable-native source extension.
+  RxNorm → `DRUG_EXPOSURE` (stretch) — using the loaded OHDSI Athena standard
+  vocabularies.
+- Phase 4: automated tests in CI (GitHub Actions), concept-mapping coverage % reported
+  here, one demonstration SQL query, `v1.0` tag.
+- Stretch (post-v1.0): extend to a wearable-native source (WESAD or PPG-DaLiA), mapping
+  physiological signals into FHIR `Observation`/`Device` and then into `MEASUREMENT`.
 
 ## Architecture (current)
 
 ```
 docker-compose.yml        Postgres 16 container definition
 sql/init/                 OMOP CDM v5.4 DDL, run automatically on first container start
-  00_create_schema.sql      creates the "cdm" schema
-  01_ddl.sql                39 CDM tables (source: OHDSI/CommonDataModel v5.4.0)
-  02_primary_keys.sql        primary key constraints
-  03_constraints.sql         foreign key constraints (one upstream FK commented out — see file)
-  04_indices.sql              indices
+sql/transform/            Phase 2: staging -> cdm mapping SQL
+  01_person.sql             staging.patient -> cdm.person
+  02_visit_occurrence.sql   staging.encounter -> cdm.visit_occurrence
 scripts/verify_setup.sh   confirms the DDL applied correctly after `docker compose up`
-docs/design-doc.md        one-paragraph design doc (first real commit)
-requirements.txt           Python deps, pinned ahead of Phase 1 (not used yet)
-sql/init/05_staging_schema.sql Staging the FHIR data
-scripts/load_staging.py     The main logic where the FHIR data is parsed
+scripts/load_staging.py   Phase 1: parses FHIR NDJSON into staging tables
+scripts/verify_row_counts.py  independent row-count check, staging vs. source files
+scripts/load_vocab.sh     loads a targeted Athena vocabulary subset into cdm.concept etc.
+docs/phase1-plan.md       Phase 1 step-by-step plan
+docs/phase2-plan.md       Phase 2 step-by-step plan, including the vocab-load detour
+requirements.txt          Python deps
 ```
 
 ## Design decisions & tradeoffs
@@ -77,11 +73,23 @@ scripts/load_staging.py     The main logic where the FHIR data is parsed
 
 ## Limitations
 
-- FHIR data loaded into staging only — no OMOP tables (`PERSON`, `VISIT_OCCURRENCE`, etc.)
-  populated yet.
-- No standard vocabularies (LOINC/RxNorm/SNOMED) loaded into the database yet (files are
-  downloaded, not loaded).
-- No automated tests or CI yet.
+- **1 of 100 patients** has an unmappable `race_source_value` (`'ASKU'`, HL7's
+  "asked-but-unknown" code) — no matching concept exists anywhere in the loaded
+  vocabulary. `race_concept_id` is honestly `0` for that patient, not silently guessed.
+- **18 of 100 patients** have no `us-core-ethnicity` extension in the source FHIR data at
+  all (not a mapping failure — the data genuinely doesn't have it).
+  `ethnicity_concept_id` is `0` for those.
+- **`visit_concept_id` involved two judgment calls**, not clean 1:1 mappings: FHIR
+  encounter class `OBSENC` ("observation encounter," a real US billing status with no
+  exact OMOP equivalent) is mapped to Outpatient Visit; `SS` ("short stay," also no
+  dedicated concept) is mapped to Inpatient Visit. Documented in
+  `sql/transform/02_visit_occurrence.sql` and `docs/phase2-plan.md`, not hidden.
+- Vocabulary is a targeted subset, not the full Athena download — sufficient for Phase 2
+  and the planned Phase 3 scope, but concept hierarchy/relationship lookups
+  (`CONCEPT_ANCESTOR`/`CONCEPT_RELATIONSHIP`) aren't available yet if needed later.
+- No concept mapping yet for `MEASUREMENT`/`CONDITION_OCCURRENCE` (Phase 3).
+- No automated tests or CI yet (Phase 4).
+
 
 ## How to run this locally (Phase 0 only, for now)
 
