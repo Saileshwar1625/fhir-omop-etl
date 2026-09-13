@@ -47,9 +47,20 @@ behind it, with verification queries run and their results checked.
 
 ### In Progress
 
-- **Phase 4 — Testing, CI, Release.** Automated pipeline tests in GitHub Actions against a small
-  synthetic fixture (real Athena vocabularies require individual license acceptance and can't be
-  auto-fetched or redistributed in CI), one demonstration SQL query, `v1.0` tag.
+- **Phase 4 — Testing, CI, Release.** `.github/workflows/ci.yml` runs the entire pipeline (DDL →
+  staging load → vocab load → concept mapping) in GitHub Actions against a small synthetic fixture
+  (`tests/fixtures/`) — real Athena vocabularies require individual license acceptance and can't be
+  auto-fetched or redistributed in CI, so the fixture is fake data exercising the real pipeline
+  code. Building the fixture found **two real edge-case bugs** that 5,051 real conditions and
+  813,540 real measurements never triggered: `04_measurement.sql` could crash its entire 813,540-row
+  insert on a single encounter missing a date (fixed, reverified against both the fixture and the
+  real data — see `docs/phase4-plan.md`); `03_condition_occurrence.sql` silently drops a condition
+  in the same situation (documented as a real limitation, not patched, since there's no valid date
+  to insert in that case — see below). `tests/test_pipeline.py` asserts 20 exact expected values
+  against the fixture, all currently passing locally. Still open: confirming CI is actually green on
+  GitHub (not just verified locally), running the demonstration query
+  (`sql/demo/comorbidity_measurement_summary.sql`) against the real database, and the `v1.0` tag —
+  see `docs/phase4-plan.md` for the full Definition of Done.
 
 ### Planned
 
@@ -67,6 +78,7 @@ phase's detailed writeup lives.
 | Phase 1 (staging load) | `docs/phase1-plan.md` |
 | Phase 2 (PERSON, VISIT_OCCURRENCE) | `docs/phase2-plan.md` |
 | Phase 3 (CONDITION_OCCURRENCE, MEASUREMENT) | `docs/phase3-plan.md` |
+| Phase 4 (CI, fixture testing, two bugs found) | `docs/phase4-plan.md` |
 
 ## Architecture (current)
 
@@ -90,14 +102,21 @@ sql/transform/
   02_visit_occurrence.sql         staging.encounter -> cdm.visit_occurrence
   03_condition_occurrence.sql     staging.condition -> cdm.condition_occurrence
   04_measurement.sql              staging.observation -> cdm.measurement
+sql/demo/
+  comorbidity_measurement_summary.sql   Phase 4 demonstration query (real DB, not the fixture)
 docs/
   design-doc.md                   one-paragraph design doc (first real commit)
   project-plan.md                 roadmap for all phases, with dates
   phase1-plan.md                  Phase 1 detailed writeup
   phase2-plan.md                  Phase 2 detailed writeup
   phase3-plan.md                  Phase 3 detailed writeup
+  phase4-plan.md                  Phase 4 detailed writeup, incl. the two bugs the fixture found
+tests/
+  fixtures/fhir/                   synthetic FHIR NDJSON.gz fixture (fake patients/encounters/etc.)
+  fixtures/vocab/                  synthetic OMOP vocabulary CSVs (fake terminology, real fixed IDs)
+  test_pipeline.py                 asserts exact expected pipeline output against the fixture
+.github/workflows/ci.yml          runs the full pipeline against the fixture on every push
 requirements.txt                  Python deps (Phase 1)
-tests/                            Phase 4: fixture-based CI pipeline tests
 ```
 
 ## Design decisions & tradeoffs
@@ -132,9 +151,18 @@ tests/                            Phase 4: fixture-based CI pipeline tests
   at `0`/have no source extension — documented in `docs/phase2-plan.md`, not silently dropped.
 - `OBSENC`/`SS` encounter classes map to `visit_concept_id` via judgment call (no exact OMOP
   concept exists for either) — see `docs/phase2-plan.md`.
-- No automated tests or CI yet — in progress, Phase 4.
 - `value_source_value` in `cdm.measurement` is truncated to 50 characters (OMOP schema limit) —
   the untruncated original text isn't preserved elsewhere in this pipeline.
+- **A condition whose linked encounter is missing `period.start`/`period.end` will not appear in
+  `cdm.condition_occurrence` at all** — silently, no error. Found via Phase 4 fixture testing, not
+  observed in the real data (0/637 real encounters were missing a date, so this has never actually
+  happened here). Can't be fixed the way the equivalent `MEASUREMENT` bug was: `CONDITION_OCCURRENCE`
+  has no date of its own and borrows the visit's date, and `condition_start_date` is `NOT NULL` — if
+  the visit's date doesn't exist, there's genuinely nothing valid to insert. See `docs/phase4-plan.md`.
+- CI (`.github/workflows/ci.yml`) tests against a synthetic fixture, not the real MIMIC/Athena data
+  — real Athena vocabularies can't legally be fetched or redistributed in CI (individual license
+  required). The fixture exercises the same pipeline code, but its "results" are meaningless as
+  data — see `docs/phase4-plan.md`.
 
 ## How to run this locally
 
@@ -169,6 +197,45 @@ To tear down and start clean (e.g. to re-test the DDL scripts from scratch):
 ```bash
 docker compose down -v   # -v also deletes the data volume, so init scripts re-run next time
 ```
+
+## Running the tests
+
+`.github/workflows/ci.yml` runs this automatically on every push, against a synthetic fixture
+(`tests/fixtures/`) instead of the real data — see `docs/phase4-plan.md` for why. To run the same
+sequence locally (e.g. against a scratch Postgres, not your real loaded database):
+
+```bash
+export PGHOST=127.0.0.1 PGPORT=5433 PGDATABASE=omop_cdm PGUSER=omop_admin PGPASSWORD=omop_admin_pw
+export RAW_DIR=tests/fixtures/fhir
+export VOCAB_DIR=tests/fixtures/vocab
+
+for f in sql/init/*.sql; do psql -f "$f"; done
+python scripts/load_staging.py --resource all
+./scripts/load_vocab.sh
+psql -f sql/transform/01_person.sql
+psql -f sql/transform/02_visit_occurrence.sql
+./scripts/load_concept_relationship.sh
+psql -f sql/transform/03_condition_occurrence.sql
+psql -f sql/transform/04_measurement.sql
+python tests/test_pipeline.py
+```
+
+Expected output: 20 `[PASS]` lines, ending `All checks passed.` Run this against a disposable
+database, not your real one — it truncates vocabulary tables and inserts fixture data that has
+nothing to do with the real 100-patient MIMIC cohort.
+
+### Demonstration query
+
+`sql/demo/comorbidity_measurement_summary.sql` answers a real question against the actual loaded
+database (not the fixture): for each standard diagnosis, how many patients have it, and how many
+measurements were typically recorded during the visit where it was diagnosed. Run it against your
+real, fully-loaded database:
+
+```bash
+docker exec -i omop_postgres psql -U omop_admin -d omop_cdm < sql/demo/comorbidity_measurement_summary.sql
+```
+
+*(Output pending — will be recorded here once run against the real data.)*
 
 ## Dataset citations
 

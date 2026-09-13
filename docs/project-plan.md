@@ -100,9 +100,23 @@ ahead of schedule.)
 Key constraint driving the CI design: OHDSI Athena vocabulary downloads require
 individual license acceptance and can't be auto-fetched or redistributed in CI. CI
 instead runs the full pipeline (DDL → staging load → transforms → concept mapping)
-against a small, hand-built synthetic fixture — fake FHIR resources and a structurally
-valid but made-up vocabulary subset (no real SNOMED/LOINC content, so no licensing
-issue) — and asserts exact expected outputs. See `docs/phase4-plan.md` once written.
+against a small, hand-built synthetic fixture (`tests/fixtures/`) — fake FHIR resources
+and a structurally valid but made-up vocabulary subset (no real SNOMED/LOINC content, so
+no licensing issue) — and asserts 20 exact expected outputs (`tests/test_pipeline.py`).
+
+Building the fixture (deliberately including an encounter missing a date, not just a
+happy path) found two real bugs neither of which the 100-patient real dataset ever
+triggered: `04_measurement.sql` could crash its entire 813,540-row insert over a single
+bad FK reference (fixed, reverified against the real Phase 3 data too — unaffected,
+since 0/637 real encounters hit this case); `03_condition_occurrence.sql` silently drops
+a condition in the same situation (no fix possible without a date to insert — documented
+as a limitation with a regression-guarding test instead). `.github/workflows/ci.yml`
+runs the whole sequence on every push. Full account: `docs/phase4-plan.md`.
+
+Still open as of this writing: confirming the GitHub Actions run is actually green (not
+just verified locally, step by step, against a scratch Postgres), running
+`sql/demo/comorbidity_measurement_summary.sql` against the real database and recording
+its output, and the `v1.0` tag.
 
 ### Stretch (post-v1.0)
 Extend to a wearable-native source (WESAD or PPG-DaLiA) — physiological signals mapped
@@ -118,7 +132,7 @@ v1.
 | `docs/phase1-plan.md` | Phase 1 step-by-step | Yes |
 | `docs/phase2-plan.md` | Phase 2 step-by-step, incl. vocab-load detour | Yes |
 | `docs/phase3-plan.md` | Phase 3 step-by-step | Yes (as of Sept 10 cleanup) |
-| `docs/phase4-plan.md` | Phase 4 step-by-step (CI fixture design) | Not written yet |
+| `docs/phase4-plan.md` | Phase 4 step-by-step (CI fixture design, two bugs found) | Not committed yet — new this session |
 | `docs/phase1-explanation.md` | Personal build log / interview prep, full code + reasoning | No — study doc only |
 | `docs/concepts-glossary.md` | FHIR/OMOP/OHDSI term reference | No — study doc only |
 | `README.md` | Live, high-level status snapshot for anyone landing on the repo | Yes |

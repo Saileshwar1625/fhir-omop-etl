@@ -5,20 +5,27 @@ USAGE:
     python scripts/load_staging.py --resource patient
     python scripts/load_staging.py --resource all
 
-WHAT'S ALREADY DONE FOR YOU:
-  - CLI argument parsing (main())
-  - DB connection handling (main())
-  - RESOURCE_FILE_MAP: which source files feed which staging table
-  - read_ndjson_gz(): streams a gzipped NDJSON file, skips bad lines with a warning
+DB connection and the source data directory are read from environment
+variables, falling back to this project's local docker-compose defaults if
+unset -- this lets the exact same script run against the local Docker
+Postgres (port 5433) or a CI Postgres service container (typically port
+5432) or any other Postgres, and against either the real MIMIC download or
+a small test fixture, without editing the script. See docs/phase4-plan.md
+for why this became configurable (originally hardcoded; Phase 4's CI needed
+to point this at tests/fixtures/fhir and a different host/port).
 
-WHAT YOU NEED TO IMPLEMENT:
-  - load_resource_type(): the actual read-and-upsert loop. Full spec is in its
-    docstring below. This is the one real piece of Phase 1 logic -- everything
-    else here is plumbing you'd otherwise have to look up anyway.
+Environment variables (all optional):
+    PGHOST      default 127.0.0.1
+    PGPORT      default 5433   (docker-compose.yml's host-side port mapping)
+    PGDATABASE  default omop_cdm
+    PGUSER      default omop_admin
+    PGPASSWORD  default omop_admin_pw  (dev-only password, see docker-compose.yml)
+    RAW_DIR     default data/raw/mimic-iv-clinical-database-demo-on-fhir-2.1.0/fhir
 """
 import argparse
 import gzip
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -26,11 +33,16 @@ import psycopg2
 from psycopg2.extras import Json
 
 DB_CONFIG = dict(
-    host="127.0.0.1", port=5433, dbname="omop_cdm",
-    user="omop_admin", password="omop_admin_pw",
+    host=os.environ.get("PGHOST", "127.0.0.1"),
+    port=int(os.environ.get("PGPORT", "5433")),
+    dbname=os.environ.get("PGDATABASE", "omop_cdm"),
+    user=os.environ.get("PGUSER", "omop_admin"),
+    password=os.environ.get("PGPASSWORD", "omop_admin_pw"),
 )
 
-RAW_DIR = Path("data/raw/mimic-iv-clinical-database-demo-on-fhir-2.1.0/fhir")
+RAW_DIR = Path(os.environ.get(
+    "RAW_DIR", "data/raw/mimic-iv-clinical-database-demo-on-fhir-2.1.0/fhir"
+))
 
 # Key = staging table name, value = list of source filenames (relative to RAW_DIR)
 # that contain that FHIR resourceType. Medication files deliberately excluded --
@@ -77,7 +89,7 @@ def read_ndjson_gz(path):
 
 
 def load_resource_type(conn, table_name, filenames):
-    total_inserted=0
+    total_inserted = 0
 
     for filename in filenames:
         path = RAW_DIR / filename
@@ -87,7 +99,6 @@ def load_resource_type(conn, table_name, filenames):
         skipped_count = 0
 
         for resource in read_ndjson_gz(path):
-            # Process each resource and insert into the staging table
             read_count += 1
             resource_id = resource.get("id")
 
@@ -112,12 +123,10 @@ def load_resource_type(conn, table_name, filenames):
         conn.commit()
         cur.close()
 
-        print (f"  {filename}: read {read_count}, inserted {inserted_count}, skipped {skipped_count}")
+        print(f"  {filename}: read {read_count}, inserted {inserted_count}, skipped {skipped_count}")
         total_inserted += inserted_count
 
     return total_inserted
-
-
 
 
 def main():

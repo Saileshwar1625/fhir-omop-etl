@@ -1,0 +1,11 @@
+vocabulary_id	vocabulary_name	vocabulary_reference	vocabulary_version	vocabulary_concept_id
+None	OMOP Standardized Vocabularies	none	Fixture v1	0
+Gender	OMOP Gender	OMOP generated	Fixture v1	0
+Race	Race and Ethnicity Code Set	OMB standards	Fixture v1	0
+Ethnicity	OMOP Ethnicity	OMB standards	Fixture v1	0
+Visit	OMOP Visit	OMOP generated	Fixture v1	0
+Type Concept	OMOP Type Concept	OMOP generated	Fixture v1	0
+ICD9CM	Fixture ICD9CM subset	none	Fixture v1	0
+ICD10CM	Fixture ICD10CM subset	none	Fixture v1	0
+SNOMED	Fixture SNOMED subset	none	Fixture v1	0
+LOINC	Fixture LOINC subset	none	Fixture v1	0

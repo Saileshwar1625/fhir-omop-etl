@@ -1,0 +1,22 @@
+concept_id	concept_name	domain_id	vocabulary_id	concept_class_id	standard_concept	concept_code	valid_start_date	valid_end_date	invalid_reason
+0	No matching concept	Metadata	None	Undefined		No matching concept	1970-01-01	2099-12-31	
+8507	MALE	Gender	Gender	Gender	S	M	1970-01-01	2099-12-31	
+8532	FEMALE	Gender	Gender	Gender	S	F	1970-01-01	2099-12-31	
+8521	OTHER	Gender	Gender	Gender	S	OTH	1970-01-01	2099-12-31	
+8551	UNKNOWN	Gender	Gender	Gender	S	U	1970-01-01	2099-12-31	
+8527	White	Race	Race	Race	S	5	1970-01-01	2099-12-31	
+8516	Black or African American	Race	Race	Race	S	3	1970-01-01	2099-12-31	
+8552	Unknown	Race	Race	Race	S	0	1970-01-01	2099-12-31	
+38003563	Hispanic or Latino	Ethnicity	Ethnicity	Ethnicity	S	1	1970-01-01	2099-12-31	
+38003564	Not Hispanic or Latino	Ethnicity	Ethnicity	Ethnicity	S	0	1970-01-01	2099-12-31	
+9201	Inpatient Visit	Visit	Visit	Visit	S	IP	1970-01-01	2099-12-31	
+9202	Outpatient Visit	Visit	Visit	Visit	S	OP	1970-01-01	2099-12-31	
+9203	Emergency Room Visit	Visit	Visit	Visit	S	ER	1970-01-01	2099-12-31	
+32817	EHR	Type Concept	Type Concept	Type Concept	S	OMOP4822463	1970-01-01	2099-12-31	
+32827	EHR encounter record	Type Concept	Type Concept	Type Concept	S	OMOP4822465	1970-01-01	2099-12-31	
+90001	Fixture ICD9 dx A (non-standard)	Condition	ICD9CM	ICD9CM code		571.5	1970-01-01	2099-12-31	
+90002	Fixture ICD10 dx B (non-standard)	Condition	ICD10CM	ICD10CM code		K76.6	1970-01-01	2099-12-31	
+90101	Fixture standard dx A	Condition	SNOMED	Clinical Finding	S	FIXSNOMED001	1970-01-01	2099-12-31	
+90102	Fixture standard dx B	Condition	SNOMED	Clinical Finding	S	FIXSNOMED002	1970-01-01	2099-12-31	
+91001	Fixture LOINC test A	Measurement	LOINC	Lab Test	S	99001-1	1970-01-01	2099-12-31	
+91002	Fixture LOINC test B	Measurement	LOINC	Lab Test	S	99002-2	1970-01-01	2099-12-31	

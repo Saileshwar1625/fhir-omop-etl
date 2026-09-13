@@ -1,0 +1,95 @@
+name: CI
+
+# Runs the ENTIRE pipeline (schema -> staging load -> vocab load -> concept
+# mapping) against a small synthetic fixture (tests/fixtures/), not the real
+# MIMIC/Athena data. Real Athena vocabulary downloads require accepting an
+# individual license and can't be auto-fetched or redistributed here -- see
+# docs/phase4-plan.md for the full reasoning. The fixture is fake data, but
+# the pipeline code exercising it is the exact same code that runs against
+# the real thing locally.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: omop_admin
+          POSTGRES_PASSWORD: omop_admin_pw
+          POSTGRES_DB: omop_cdm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U omop_admin -d omop_cdm"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGDATABASE: omop_cdm
+      PGUSER: omop_admin
+      PGPASSWORD: omop_admin_pw
+      RAW_DIR: tests/fixtures/fhir
+      VOCAB_DIR: tests/fixtures/vocab
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply OMOP CDM v5.4 DDL (sql/init/, in order)
+        run: |
+          for f in sql/init/*.sql; do
+            echo "== $f =="
+            psql -f "$f"
+          done
+
+      - name: Confirm 39 tables in cdm schema (Phase 0 check)
+        # Not scripts/verify_setup.sh -- that script's healthcheck loop calls
+        # `docker inspect <container-name>`, which only makes sense against
+        # the named local docker-compose container. GitHub Actions' `services:`
+        # postgres isn't reachable that way, and the runner already waits for
+        # the service's own --health-cmd before any step runs, so the container
+        # is already up by the time this step executes. This does the one
+        # check from that script that actually still applies in CI directly.
+        run: |
+          count=$(psql -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='cdm';")
+          echo "cdm schema table count: $count"
+          test "$count" -eq 39
+
+      - name: Load fixture FHIR data into staging (Phase 1)
+        run: python scripts/load_staging.py --resource all
+
+      - name: Load fixture vocabulary (Phase 2 prerequisite)
+        run: ./scripts/load_vocab.sh
+
+      - name: Run PERSON + VISIT_OCCURRENCE transforms (Phase 2)
+        run: |
+          psql -f sql/transform/01_person.sql
+          psql -f sql/transform/02_visit_occurrence.sql
+
+      - name: Load fixture CONCEPT_RELATIONSHIP (Phase 3 prerequisite)
+        run: ./scripts/load_concept_relationship.sh
+
+      - name: Run CONDITION_OCCURRENCE + MEASUREMENT transforms (Phase 3)
+        run: |
+          psql -f sql/transform/03_condition_occurrence.sql
+          psql -f sql/transform/04_measurement.sql
+
+      - name: Assert exact expected pipeline output
+        run: python tests/test_pipeline.py

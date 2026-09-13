@@ -54,6 +54,24 @@ ON CONFLICT (source_observation_id) DO NOTHING;
 -- measurement_type_concept_id = 32817 "EHR" -- generic, since this table
 -- spans labs/vitals/exam findings with no single more specific Type
 -- Concept fitting all of them.
+--
+-- visit_occurrence_id resolution: joins through staging.visit_id_map AND
+-- THEN to cdm.visit_occurrence itself, not just the crosswalk. Found via
+-- Phase 4 fixture testing, not assumed: staging.visit_id_map assigns an id
+-- to every encounter unconditionally (Phase 2's crosswalk pattern), but
+-- 02_visit_occurrence.sql's WHERE clause can exclude an encounter missing
+-- period.start/end from ever landing in cdm.visit_occurrence. Resolving
+-- visit_occurrence_id from the crosswalk alone (as an earlier version of
+-- this file did) hands the INSERT a visit_occurrence_id that the crosswalk
+-- promises exists but cdm.visit_occurrence doesn't actually have -- which
+-- violates the FK constraint and aborts the ENTIRE INSERT (all 813,540
+-- rows, one statement) over a single bad reference. In production this
+-- never triggered (0/637 encounters were excluded), so it was invisible
+-- until a synthetic fixture deliberately included one. Fix: LEFT JOIN
+-- cdm.visit_occurrence and use ITS visit_occurrence_id (NULL if the visit
+-- never actually loaded) -- safe because visit_occurrence_id is nullable
+-- in MEASUREMENT, unlike CONDITION_OCCURRENCE's condition_start_date
+-- (see docs/phase4-plan.md for why that one can't be fixed the same way).
 -- ---------------------------------------------------------------------
 WITH obs_codes AS (
     SELECT
@@ -118,7 +136,7 @@ SELECT
     mc.unit_source_value,
     mc.range_low,
     mc.range_high,
-    vm.visit_occurrence_id,
+    vo.visit_occurrence_id,
     mc.raw_code AS measurement_source_value,
     COALESCE(mc.source_concept_id, 0) AS measurement_source_concept_id,
     mc.value_source_value
@@ -126,4 +144,5 @@ FROM mapped_concepts mc
 JOIN staging.observation_id_map im ON im.source_observation_id = mc.resource_id
 JOIN staging.person_id_map pm ON pm.source_patient_id = split_part(mc.subject_ref, '/', 2)
 LEFT JOIN staging.visit_id_map vm ON vm.source_encounter_id = split_part(mc.encounter_ref, '/', 2)
+LEFT JOIN cdm.visit_occurrence vo ON vo.visit_occurrence_id = vm.visit_occurrence_id
 ON CONFLICT (measurement_id) DO NOTHING;
