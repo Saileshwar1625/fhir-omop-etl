@@ -76,7 +76,7 @@ jobs:
         run: python scripts/load_staging.py --resource all
 
       - name: Load fixture vocabulary (Phase 2 prerequisite)
-        run: ./scripts/load_vocab.sh
+        run: bash scripts/load_vocab.sh
 
       - name: Run PERSON + VISIT_OCCURRENCE transforms (Phase 2)
         run: |
@@ -84,7 +84,7 @@ jobs:
           psql -f sql/transform/02_visit_occurrence.sql
 
       - name: Load fixture CONCEPT_RELATIONSHIP (Phase 3 prerequisite)
-        run: ./scripts/load_concept_relationship.sh
+        run: bash scripts/load_concept_relationship.sh
 
       - name: Run CONDITION_OCCURRENCE + MEASUREMENT transforms (Phase 3)
         run: |
