@@ -183,8 +183,15 @@ was diagnosed. This is a genuine "does the CDM actually let you ask a clinical/R
 question across tables" demonstration, not a `SELECT count(*)` — it joins
 `CONDITION_OCCURRENCE` → `CONCEPT` (for the human-readable condition name) →
 `VISIT_OCCURRENCE` → `MEASUREMENT`, which only works because Phase 2's crosswalks and
-Phase 3's concept resolution are both correct. Run against the real database (not the
-fixture) — see README for the run command and to record real output once executed.
+Phase 3's concept resolution are both correct. Run against the real, fully-loaded
+database on Sept 13, 2026 — top result: 72 patients with "History of event" (a
+non-specific administrative/status concept, expected to lead by count), followed by the
+expected chronic-disease conditions for an ICU-derived cohort (essential hypertension 55,
+hyperlipidemia 47, acute kidney injury 32, type 2 diabetes 30). `avg_measurements_per_visit`
+tracks roughly with acuity — acidosis, thrombocytopenic disorder, and AKI (all associated
+with sicker ICU patients) sit at the high end (605–673), while chronic-but-stable
+conditions like hypertension and tobacco dependence sit at the low end (~187–190). Full
+output recorded in the README (`## Running the tests` → `### Demonstration query`).
 
 ## Definition of done for Phase 4
 
@@ -197,9 +204,14 @@ fixture) — see README for the run command and to record real output once execu
       environment-configurable (DB connection + data directory) without changing their
       default (local, no env vars set) behavior — reverified against the fixture
       end-to-end after the change.
-- [ ] Demonstration SQL query run against the real database, output recorded in the
-      README.
-- [ ] CI actually green on GitHub (simulated identically, step by step, in a local
-      sandbox — but "I ran the same steps elsewhere" isn't the same claim as "GitHub
-      Actions ran it," so this isn't checked off until it's confirmed there).
+- [x] Demonstration SQL query run against the real database, output recorded in the
+      README (Sept 13, 2026).
+- [x] CI actually green on GitHub — confirmed via an actual GitHub Actions run
+      (`pipeline` job, status: success) after fixing an exit-126 failure caused by two
+      scripts losing their git-tracked executable bit on a OneDrive-mounted Windows
+      checkout (`git update-index --chmod=+x`, plus switching `ci.yml` to invoke them
+      via `bash scripts/...` instead of `./scripts/...` so this can't recur the same way).
+      The one warning on the run (Node.js 20 deprecation notice on `actions/checkout@v4`/
+      `actions/setup-python@v5`) is a GitHub Actions runner-infrastructure notice, unrelated
+      to this pipeline's correctness — not something this phase needs to fix.
 - [ ] `v1.0` tag, only after the above two are both actually true.

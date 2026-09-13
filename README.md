@@ -57,10 +57,14 @@ behind it, with verification queries run and their results checked.
   real data — see `docs/phase4-plan.md`); `03_condition_occurrence.sql` silently drops a condition
   in the same situation (documented as a real limitation, not patched, since there's no valid date
   to insert in that case — see below). `tests/test_pipeline.py` asserts 20 exact expected values
-  against the fixture, all currently passing locally. Still open: confirming CI is actually green on
-  GitHub (not just verified locally), running the demonstration query
-  (`sql/demo/comorbidity_measurement_summary.sql`) against the real database, and the `v1.0` tag —
-  see `docs/phase4-plan.md` for the full Definition of Done.
+  against the fixture, all currently passing. **CI confirmed green on GitHub Actions** (one real
+  CI-only failure along the way: two scripts lost their git-tracked executable bit on a
+  OneDrive-mounted Windows checkout, causing an exit-126 permission error — fixed via
+  `git update-index --chmod=+x` and by switching `ci.yml` to invoke scripts via `bash` instead of
+  `./`, see `docs/phase4-plan.md`). The demonstration query
+  (`sql/demo/comorbidity_measurement_summary.sql`) has been run against the real, fully-loaded
+  database — output recorded below. Still open: the `v1.0` tag — see `docs/phase4-plan.md` for the
+  full Definition of Done.
 
 ### Planned
 
@@ -235,7 +239,38 @@ real, fully-loaded database:
 docker exec -i omop_postgres psql -U omop_admin -d omop_cdm < sql/demo/comorbidity_measurement_summary.sql
 ```
 
-*(Output pending — will be recorded here once run against the real data.)*
+Run against the real 100-patient MIMIC-IV cohort (Sept 13, 2026):
+
+| condition_concept_id | condition_name | patient_count | diagnosis_count | avg_measurements_per_visit |
+|---|---|---|---|---|
+| 1340204 | History of event | 72 | 320 | 301.0 |
+| 320128 | Essential hypertension | 55 | 134 | 186.9 |
+| 432867 | Hyperlipidemia | 47 | 114 | 267.3 |
+| 197320 | Acute kidney injury | 32 | 77 | 440.7 |
+| 201826 | Type 2 diabetes mellitus | 30 | 102 | 224.2 |
+| 313217 | Atrial fibrillation | 27 | 68 | 363.1 |
+| 439777 | Anemia | 26 | 45 | 401.2 |
+| 81902 | Urinary tract infectious disease | 23 | 47 | 318.9 |
+| 4119499 | Not for resuscitation | 22 | 26 | 540.4 |
+| 319835 | Congestive heart failure | 20 | 58 | 448.3 |
+| 433736 | Obesity | 20 | 43 | 281.9 |
+| 432870 | Thrombocytopenic disorder | 20 | 26 | 605.0 |
+| 46272451 | Long-term current use of insulin | 19 | 86 | 205.7 |
+| 46273937 | Long-term current use of anticoagulant | 19 | 52 | 307.6 |
+| 437827 | Pure hypercholesterolemia | 19 | 42 | 219.8 |
+| 435515 | Hypo-osmolality and or hyponatremia | 19 | 33 | 476.9 |
+| 317576 | Coronary arteriosclerosis | 19 | 28 | 298.3 |
+| 435517 | Acidosis | 19 | 27 | 672.9 |
+| 434894 | Acute posthemorrhagic anemia | 18 | 25 | 566.9 |
+| 437264 | Tobacco dependence syndrome | 18 | 24 | 189.5 |
+
+(Full result set — query is capped at `LIMIT 20`, ordered by `patient_count` descending.)
+No independent ground truth to check this against (this isn't a claim of "verified correct," just
+"ran and produced output") — but it's a directionally sane result for an ICU-derived cohort:
+hypertension/hyperlipidemia/diabetes are the expected top chronic-disease conditions, and
+measurement intensity per visit tracks roughly with acuity (acidosis, thrombocytopenia, and AKI —
+all conditions associated with sicker ICU patients — have the highest `avg_measurements_per_visit`,
+while hypertension and tobacco dependence, chronic but not acutely monitored, have the lowest).
 
 ## Dataset citations
 

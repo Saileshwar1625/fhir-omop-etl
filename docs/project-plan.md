@@ -113,10 +113,18 @@ a condition in the same situation (no fix possible without a date to insert — 
 as a limitation with a regression-guarding test instead). `.github/workflows/ci.yml`
 runs the whole sequence on every push. Full account: `docs/phase4-plan.md`.
 
-Still open as of this writing: confirming the GitHub Actions run is actually green (not
-just verified locally, step by step, against a scratch Postgres), running
-`sql/demo/comorbidity_measurement_summary.sql` against the real database and recording
-its output, and the `v1.0` tag.
+GitHub Actions confirmed green (`pipeline` job: success) after one real CI-only failure —
+two scripts (`load_vocab.sh`, `load_concept_relationship.sh`) lost their git-tracked
+executable bit on a OneDrive-mounted Windows checkout, causing `ci.yml`'s `./scripts/...`
+invocations to fail with exit 126 ("permission denied"). Fixed by restoring the
+executable bit at the git level (`git update-index --chmod=+x`) and switching `ci.yml` to
+invoke both scripts via `bash scripts/...` so a lost executable bit can't break CI again.
+
+`sql/demo/comorbidity_measurement_summary.sql` run against the real, fully-loaded
+database (Sept 13, 2026) — output recorded in the README.
+
+Still open as of this writing: the `v1.0` tag — the only item left in Phase 4's
+Definition of Done (`docs/phase4-plan.md`).
 
 ### Stretch (post-v1.0)
 Extend to a wearable-native source (WESAD or PPG-DaLiA) — physiological signals mapped
