@@ -38,7 +38,7 @@ prep, not pipeline work. ~10–15 hrs/week available.
 | 1 — Ingestion / Staging | — | ~Aug 19–24, 2026 *(confirm exact date)* | Completed |
 | 2 — PERSON + VISIT_OCCURRENCE | Sept 1, 2026 | **Aug 26, 2026** | Completed (ahead of target) |
 | 3 — Concept Mapping | ~Sept 15, 2026 | **~Sept 1, 2026** (committed to git Sept 10) | Completed |
-| 4 — Testing, CI, `v1.0` | ~Oct 15, 2026 | — | In progress (started Sept 10) |
+| 4 — Testing, CI, `v1.0` | ~Oct 15, 2026 | **Sept 13, 2026** | Completed (well ahead of target) |
 | Interview prep | Nov 1 – Dec 2026 | — | Scheduled |
 
 Note on Phase 3: the transform SQL and scripts were written and verified against the
@@ -91,7 +91,7 @@ Stretch, not attempted: `DRUG_EXPOSURE` — medication resources were deliberate
 excluded from Phase 1 scope (see `scripts/load_staging.py`), so the staging tables it
 would need don't exist.
 
-### Phase 4 — Testing, CI, Release — **In progress** (started Sept 10, 2026; target ~Oct 15, 2026)
+### Phase 4 — Testing, CI, Release — **Completed** (Sept 13, 2026, well ahead of the ~Oct 15 target)
 Automated tests in CI (GitHub Actions), one demonstration SQL query showing the
 pipeline answering a real question, `v1.0` tag. (Concept-mapping coverage % — originally
 scoped for this phase — is already reported in the README and `docs/phase3-plan.md`,
@@ -123,8 +123,10 @@ invoke both scripts via `bash scripts/...` so a lost executable bit can't break 
 `sql/demo/comorbidity_measurement_summary.sql` run against the real, fully-loaded
 database (Sept 13, 2026) — output recorded in the README.
 
-Still open as of this writing: the `v1.0` tag — the only item left in Phase 4's
-Definition of Done (`docs/phase4-plan.md`).
+**`v1.0` tagged Sept 13, 2026** — annotated tag, pushed to the remote, confirmed present via
+`git ls-remote --tags origin` (`refs/tags/v1.0`). All items in Phase 4's Definition of Done
+(`docs/phase4-plan.md`) were genuinely true before the tag was created, not assumed. v1 scope
+(Phases 0–4) is complete.
 
 ### Stretch (post-v1.0)
 Extend to a wearable-native source (WESAD or PPG-DaLiA) — physiological signals mapped

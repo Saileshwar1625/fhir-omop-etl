@@ -214,4 +214,8 @@ output recorded in the README (`## Running the tests` → `### Demonstration que
       The one warning on the run (Node.js 20 deprecation notice on `actions/checkout@v4`/
       `actions/setup-python@v5`) is a GitHub Actions runner-infrastructure notice, unrelated
       to this pipeline's correctness — not something this phase needs to fix.
-- [ ] `v1.0` tag, only after the above two are both actually true.
+- [x] `v1.0` tag — created as an annotated tag and pushed to the remote; confirmed present via
+      `git ls-remote --tags origin` showing `refs/tags/v1.0` (Sept 13, 2026). All four items
+      above were genuinely true before this was checked off, not assumed.
+
+Phase 4 is complete. v1 scope (Phases 0–4) is done as of the `v1.0` tag.

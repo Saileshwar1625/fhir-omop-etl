@@ -1,10 +1,11 @@
 # FHIR → OMOP CDM ETL Pipeline
 
 An ETL pipeline that maps FHIR clinical resources into the OMOP Common Data Model (CDM) v5.4,
-built on the MIMIC-IV Clinical Database Demo on FHIR (100 de-identified patients). This is a
-work-in-progress, evening/weekend project — see the status sections below for what's actually
-done versus planned. Nothing here is claimed as finished unless it has working, tested code
-behind it, with verification queries run and their results checked.
+built on the MIMIC-IV Clinical Database Demo on FHIR (100 de-identified patients). **`v1.0`
+tagged (Sept 13, 2026)** — v1 scope (Phases 0–4: schema, staging load, PERSON/VISIT_OCCURRENCE,
+concept mapping, CI + testing) is complete. This started as an evening/weekend project; stretch
+work (see "Planned" below) continues past v1.0. Nothing here is claimed as finished unless it has
+working, tested code behind it, with verification queries run and their results checked.
 
 ## Status
 
@@ -44,9 +45,6 @@ behind it, with verification queries run and their results checked.
     dictionaries). All 9,042 of those LOINC-coded rows mapped successfully — 100% within the
     mappable subset.
   Full write-up: `docs/phase3-plan.md`.
-
-### In Progress
-
 - **Phase 4 — Testing, CI, Release.** `.github/workflows/ci.yml` runs the entire pipeline (DDL →
   staging load → vocab load → concept mapping) in GitHub Actions against a small synthetic fixture
   (`tests/fixtures/`) — real Athena vocabularies require individual license acceptance and can't be
@@ -63,8 +61,13 @@ behind it, with verification queries run and their results checked.
   `git update-index --chmod=+x` and by switching `ci.yml` to invoke scripts via `bash` instead of
   `./`, see `docs/phase4-plan.md`). The demonstration query
   (`sql/demo/comorbidity_measurement_summary.sql`) has been run against the real, fully-loaded
-  database — output recorded below. Still open: the `v1.0` tag — see `docs/phase4-plan.md` for the
-  full Definition of Done.
+  database — output recorded below. **Tagged `v1.0`** (Sept 13, 2026), confirmed present on the
+  remote (`refs/tags/v1.0`) — v1 scope is complete.
+
+### In Progress
+
+Nothing currently — v1 scope (Phases 0–4) is complete as of the `v1.0` tag. See "Planned" below
+for what's next.
 
 ### Planned
 
