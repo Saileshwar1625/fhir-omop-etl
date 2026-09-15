@@ -29,8 +29,12 @@ resources and their OMOP counterparts (`LOCATION`, `CARE_SITE`, `PROVIDER`) —
 ## Timeline
 
 Target: PhD-application-ready (v1.0 tagged, able to defend every design decision) well
-before the December 2026 application deadline, with November reserved for interview
+before the December 2026 application deadline, with October reserved for interview
 prep, not pipeline work. ~10–15 hrs/week available.
+
+Revised from the original November 1 start: Phase 4 finished Sept 13, well ahead of its
+Oct 15 target, so interview prep moves up to Oct 1 rather than sitting idle until
+November.
 
 | Phase | Target | Actual | Status |
 |---|---|---|---|
@@ -39,7 +43,7 @@ prep, not pipeline work. ~10–15 hrs/week available.
 | 2 — PERSON + VISIT_OCCURRENCE | Sept 1, 2026 | **Aug 26, 2026** | Completed (ahead of target) |
 | 3 — Concept Mapping | ~Sept 15, 2026 | **~Sept 1, 2026** (committed to git Sept 10) | Completed |
 | 4 — Testing, CI, `v1.0` | ~Oct 15, 2026 | **Sept 13, 2026** | Completed (well ahead of target) |
-| Interview prep | Nov 1 – Dec 2026 | — | Scheduled |
+| Interview prep | Oct 1 – Dec 2026 *(moved up from Nov 1)* | — | Scheduled |
 
 Note on Phase 3: the transform SQL and scripts were written and verified against the
 database around Sept 1, but sat uncommitted on disk for over a week — `git log` showed

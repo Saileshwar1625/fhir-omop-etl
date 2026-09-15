@@ -75,6 +75,15 @@ for what's next.
   staging — would need a Phase 1 extension first). Extend to a wearable-native source (WESAD or
   PPG-DaLiA), mapping physiological signals into FHIR `Observation`/`Device` and then into
   `MEASUREMENT`.
+- Comorbidity co-occurrence network: nodes = standard condition concepts (already resolved in
+  `cdm.condition_occurrence`), edges weighted by count of patients sharing both diagnoses. A
+  graph/network-analysis layer built directly on top of the existing, verified concept-mapped
+  data — not started.
+- A first predictive model (e.g. readmission or in-hospital-mortality risk) using
+  `cdm.person`/`visit_occurrence`/`condition_occurrence`/`measurement` as features. Everything
+  this pipeline has built so far is ETL and standards mapping, not analysis or ML — this would be
+  the first actual analytical/modeling layer on top of the CDM. Not started, not scoped in detail
+  yet.
 
 See `docs/project-plan.md` for the full roadmap with dates, and the table below for where each
 phase's detailed writeup lives.
