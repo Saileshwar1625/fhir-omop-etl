@@ -20,7 +20,7 @@
 Design, Verification, and a Decomposed Concept-Mapping \\
 Coverage Metric on the MIMIC-IV-FHIR Demo Dataset}
 
-\author{Sailesh \\ \small \texttt{dsailesh2001@gmail.com}}
+\author{Saileshwar Dumpala \\ \small \texttt{dsailesh2001@gmail.com}}
 
 \date{September 2026}
 
@@ -40,18 +40,18 @@ FHIR clinical resources from the MIMIC-IV Clinical Database Demo on FHIR
 (100 de-identified patients) into OMOP CDM v5.4, covering the
 \texttt{PERSON}, \texttt{VISIT\_OCCURRENCE}, \texttt{CONDITION\_OCCURRENCE},
 and \texttt{MEASUREMENT} tables, with terminology mapping through the OHDSI
-standardized vocabularies. We report three contributions beyond the
-implementation itself. First, we show that a single blended
+standardized vocabularies. I report three contributions beyond the
+implementation itself. First, I show that a single blended
 concept-mapping-coverage statistic can misrepresent pipeline correctness,
-and we present a decomposed metric that separates source-data coverage
+and I present a decomposed metric that separates source-data coverage
 ceilings from mapping-logic failures, distinguishing a case where low
 coverage (1.11\%) reflects a true source-data limitation, fully verified
 against two independent data releases, from a case (96.5\%) where nearly all
-records carry a mappable code. Second, we describe a synthetic-fixture
+records carry a mappable code. Second, I describe a synthetic-fixture
 testing methodology developed specifically to satisfy continuous-integration
 (CI) testing under a real constraint common to OMOP-based projects: OHDSI
 Athena vocabulary files require individual license acceptance and cannot be
-redistributed, so CI cannot use real vocabulary content. Third, we document
+redistributed, so CI cannot use real vocabulary content. Third, I document
 two data-integrity edge cases surfaced by deliberately adversarial fixture
 design -- absent from the real 637-encounter dataset by chance rather than
 by design -- one of which was fixed at the SQL level and one of which is a
@@ -82,7 +82,7 @@ four corresponding OMOP CDM v5.4 tables (\texttt{PERSON},
 \texttt{MEASUREMENT}), built and verified against the MIMIC-IV Clinical
 Database Demo on FHIR, a 100-patient, publicly available de-identified
 derivative of MIMIC-IV~\cite{bennett2023mimicfhir, bennett2025physionet,
-johnson2023mimiciv}. We treat this as an engineering and methodology report
+johnson2023mimiciv}. I treat this as an engineering and methodology report
 rather than a claim of novel algorithmic contribution: the value of this
 work is in a fully open, reproducible implementation, an honest accounting
 of where the pipeline's outputs are and are not trustworthy, and two
@@ -260,7 +260,7 @@ mapped-row count equals the LOINC-coded-row count exactly. The 1.11\%
 figure is therefore a source-data coverage ceiling, verified rather than
 assumed, and not evidence of a defect in the mapping implementation.
 
-We suggest this decomposition -- coverage among rows carrying a
+I suggest this decomposition -- coverage among rows carrying a
 vocabulary-eligible code, reported separately from overall table coverage
 -- as a general practice for OMOP ETL reporting whenever a source
 system's code coverage for a given domain and vocabulary is not close to
@@ -384,7 +384,7 @@ all.
 \subsection{Demonstration query}
 
 As a concrete illustration that the loaded CDM supports genuine
-cross-table analytic questions, we ran a query joining
+cross-table analytic questions, I ran a query joining
 \texttt{CONDITION\_OCCURRENCE}, \texttt{CONCEPT}, \texttt{VISIT\_OCCURRENCE},
 and \texttt{MEASUREMENT} to compute, for each standard condition concept,
 the number of distinct patients diagnosed with it and their average count
@@ -420,7 +420,7 @@ Urinary tract infectious disease & 23 & 47 & 318.9 \\
 
 \section{Limitations}
 
-We state these plainly rather than minimize them. \texttt{MEASUREMENT}
+I state these plainly rather than minimize them. \texttt{MEASUREMENT}
 concept-mapping coverage (1.11\%) is a hard ceiling imposed by the source
 data, not something further mapping logic can improve without a different
 data source or a manually constructed local-code-to-LOINC crosswalk, which
@@ -451,12 +451,12 @@ WESAD or PPG-DaLiA), mapping physiological signals into FHIR
 
 \section{Conclusion}
 
-We presented a verified, open FHIR-to-OMOP CDM v5.4 ETL pipeline covering
+I presented a verified, open FHIR-to-OMOP CDM v5.4 ETL pipeline covering
 four clinical resource types on the MIMIC-IV-FHIR demo dataset, with every
 quantitative claim confirmed against a running database rather than
-assumed. Beyond the implementation, we argue for decomposing
+assumed. Beyond the implementation, I argue for decomposing
 concept-mapping coverage metrics to separate source-data ceilings from
-mapping-logic defects, and we describe a synthetic-fixture CI methodology
+mapping-logic defects, and I describe a synthetic-fixture CI methodology
 that tests real pipeline code under the real licensing constraints that
 apply to any OMOP ETL project built on OHDSI's Athena vocabularies. Two
 edge cases surfaced by deliberately adversarial test design, absent from
@@ -467,7 +467,7 @@ untested assumptions that a sufficiently different cohort could violate.
 \section*{Availability}
 \label{sec:availability}
 Source code, SQL, tests, and CI configuration are publicly available at
-\url{https://github.com/Saileshwar1625/fhir-omop-etl} (tag \texttt{v1.0}).
+\url{https://github.com/Saileshwar1625/fhir-omop-etl} (tag \texttt{v1.0.1}).
 
 \bibliographystyle{plain}
 \begin{thebibliography}{9}
