@@ -1,0 +1,522 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!50!black,
+    urlcolor=blue!50!black,
+    citecolor=blue!50!black
+}
+
+\title{A FHIR-to-OMOP Common Data Model ETL Pipeline: \\
+Design, Verification, and a Decomposed Concept-Mapping \\
+Coverage Metric on the MIMIC-IV-FHIR Demo Dataset}
+
+\author{Sailesh \\ \small \texttt{dsailesh2001@gmail.com}}
+
+\date{September 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Electronic health record systems increasingly expose clinical data through
+Fast Healthcare Interoperability Resources (FHIR), an interoperability
+standard designed for point-of-care data exchange, while large-scale
+observational health research relies on the Observational Medical Outcomes
+Partnership (OMOP) Common Data Model (CDM), a research-oriented schema
+designed for standardized, cross-site analysis. This report describes and
+verifies an open, end-to-end extract-transform-load (ETL) pipeline that maps
+FHIR clinical resources from the MIMIC-IV Clinical Database Demo on FHIR
+(100 de-identified patients) into OMOP CDM v5.4, covering the
+\texttt{PERSON}, \texttt{VISIT\_OCCURRENCE}, \texttt{CONDITION\_OCCURRENCE},
+and \texttt{MEASUREMENT} tables, with terminology mapping through the OHDSI
+standardized vocabularies. We report three contributions beyond the
+implementation itself. First, we show that a single blended
+concept-mapping-coverage statistic can misrepresent pipeline correctness,
+and we present a decomposed metric that separates source-data coverage
+ceilings from mapping-logic failures, distinguishing a case where low
+coverage (1.11\%) reflects a true source-data limitation, fully verified
+against two independent data releases, from a case (96.5\%) where nearly all
+records carry a mappable code. Second, we describe a synthetic-fixture
+testing methodology developed specifically to satisfy continuous-integration
+(CI) testing under a real constraint common to OMOP-based projects: OHDSI
+Athena vocabulary files require individual license acceptance and cannot be
+redistributed, so CI cannot use real vocabulary content. Third, we document
+two data-integrity edge cases surfaced by deliberately adversarial fixture
+design -- absent from the real 637-encounter dataset by chance rather than
+by design -- one of which was fixed at the SQL level and one of which is a
+structural limitation documented with a regression-guarding test rather than
+silently patched. All quantitative claims in this report were verified
+against a running instance of the pipeline, not assumed from code review.
+\end{abstract}
+
+\section{Introduction}
+
+Fast Healthcare Interoperability Resources (FHIR) has become the dominant
+standard for exchanging clinical data between systems at the point of
+care~\cite{hl7fhir}. Observational health research, by contrast, is
+increasingly organized around the OMOP Common Data Model, maintained by the
+Observational Health Data Sciences and Informatics (OHDSI) collaborative,
+which standardizes both schema and terminology across participating sites
+so that analytic code can run unmodified against data collected under
+different local systems~\cite{hripcsak2015ohdsi}. These two standards serve
+different purposes -- interoperability versus standardized analysis -- and
+an increasing amount of practical data engineering work in health
+informatics consists of translating from the former into the latter.
+
+This report documents an implementation of that translation for a bounded,
+verifiable scope: four FHIR resource types (\texttt{Patient},
+\texttt{Encounter}, \texttt{Condition}, \texttt{Observation}) mapped into
+four corresponding OMOP CDM v5.4 tables (\texttt{PERSON},
+\texttt{VISIT\_OCCURRENCE}, \texttt{CONDITION\_OCCURRENCE},
+\texttt{MEASUREMENT}), built and verified against the MIMIC-IV Clinical
+Database Demo on FHIR, a 100-patient, publicly available de-identified
+derivative of MIMIC-IV~\cite{bennett2023mimicfhir, bennett2025physionet,
+johnson2023mimiciv}. We treat this as an engineering and methodology report
+rather than a claim of novel algorithmic contribution: the value of this
+work is in a fully open, reproducible implementation, an honest accounting
+of where the pipeline's outputs are and are not trustworthy, and two
+specific methodological points -- coverage-metric decomposition and
+license-constrained CI design -- that generalize to other OMOP ETL efforts
+built on top of licensed OHDSI vocabularies.
+
+The complete source code, verification queries, and a continuous-integration
+suite are publicly available; see Section~\ref{sec:availability}.
+
+\section{Background}
+
+\subsection{FHIR and OMOP}
+
+FHIR represents clinical information as discrete, linked \emph{resources}
+(e.g., \texttt{Patient}, \texttt{Encounter}, \texttt{Condition},
+\texttt{Observation}), each typically serialized as JSON and referencing
+related resources by identifier. FHIR's design optimizes for point-of-care
+exchange: a single patient's record, retrieved and updated as care happens.
+
+OMOP CDM, in contrast, is a fixed relational schema (39 tables in v5.4)
+designed so that identical analytic code -- cohort definitions, data
+characterization, statistical models -- can run against any conformant
+database regardless of the source EHR system. Every clinically meaningful
+column in OMOP is backed by a \emph{concept}: a row in the \texttt{CONCEPT}
+table drawn from a standardized vocabulary (SNOMED CT for conditions, LOINC
+for laboratory and clinical measurements, and others), rather than a free-
+text or locally-coded value. Resolving a source system's local codes to
+OMOP standard concepts -- \emph{concept mapping} -- is therefore a
+required, non-optional step of any FHIR-to-OMOP pipeline, not an optional
+enrichment.
+
+\subsection{Standard vs.\ source concepts and \texttt{CONCEPT\_RELATIONSHIP}}
+
+OMOP distinguishes a \emph{source concept} (what the original data said --
+an ICD-9-CM or ICD-10-CM code, a LOINC code, a locally defined code) from a
+\emph{standard concept} (OMOP's canonical concept for that clinical fact).
+Every relevant OMOP table stores both (e.g.\ \texttt{condition\_concept\_id}
+alongside \texttt{condition\_source\_concept\_id}), so no information is
+lost in translation. The mechanism that resolves a source concept to a
+standard concept is a lookup in \texttt{CONCEPT\_RELATIONSHIP} where
+\texttt{relationship\_id = `Maps to'} -- not a formula, but a large,
+OHDSI-curated crosswalk table distributed as part of the Athena vocabulary
+release.
+
+\subsection{Dataset}
+
+The MIMIC-IV Clinical Database Demo on FHIR (v2.1.0) is a 100-patient,
+publicly accessible, de-identified subset of MIMIC-IV re-expressed as FHIR
+R4 resources~\cite{bennett2023mimicfhir, bennett2025physionet}, itself
+derived from the base MIMIC-IV Clinical Database
+Demo~\cite{johnson2023mimiciv}, both distributed via
+PhysioNet~\cite{goldberger2000physionet}. This pipeline consumes the FHIR
+release directly; the base (non-FHIR) demo was used only as an independent
+cross-check for one data-coverage claim (Section~\ref{sec:coverage}).
+
+\section{System Design}
+
+\subsection{Schema separation}
+
+The pipeline uses two PostgreSQL schemas: \texttt{staging}, which mirrors
+the source FHIR resource shape (one JSONB column per resource type, raw and
+disposable), and \texttt{cdm}, the standard OMOP v5.4 relational schema.
+Keeping these separate means the staging layer can be dropped and reloaded
+without affecting anything downstream, and no analytic tool is ever pointed
+at unvalidated, source-shaped data.
+
+\subsection{Identity resolution}
+
+FHIR resource identifiers are string UUIDs; every OMOP primary key is an
+integer surrogate. A small set of crosswalk tables (e.g.\
+\texttt{staging.person\_id\_map}, \texttt{staging.visit\_id\_map}), each a
+\texttt{GENERATED ALWAYS AS IDENTITY} table populated with
+\texttt{ON CONFLICT DO NOTHING} semantics, assigns a stable integer to each
+UUID exactly once. This makes every load in the pipeline idempotent: re-
+running any stage against a database that already contains data neither
+duplicates records nor reassigns identifiers.
+
+\subsection{Scope}
+
+Four FHIR resources map to four OMOP tables (Table~\ref{tab:scope}).
+\texttt{Location}, \texttt{Organization}, and \texttt{Provider} were
+explicitly out of scope; \texttt{location\_id}, \texttt{provider\_id}, and
+\texttt{care\_site\_id} remain \texttt{NULL} throughout. Medication
+resources (\texttt{DRUG\_EXPOSURE}) were deferred as future work
+(Section~\ref{sec:future}).
+
+\begin{table}[h]
+\centering
+\caption{Pipeline scope: FHIR resource to OMOP CDM table.}
+\label{tab:scope}
+\begin{tabular}{ll}
+\toprule
+FHIR Resource & OMOP CDM Table \\
+\midrule
+Patient & \texttt{PERSON} \\
+Encounter & \texttt{VISIT\_OCCURRENCE} \\
+Condition & \texttt{CONDITION\_OCCURRENCE} \\
+Observation & \texttt{MEASUREMENT} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Implementation}
+
+\subsection{PERSON and VISIT\_OCCURRENCE}
+
+\texttt{Patient} resources map to \texttt{cdm.person}, resolving gender,
+race, and ethnicity against a small, fixed set of OMOP reference concepts
+(e.g.\ concept ID 8507 for male, 8527 for White, 38003564 for Not Hispanic
+or Latino); where no US Core race/ethnicity extension is present, or a
+given code (e.g.\ \texttt{ASKU}, ``asked but unknown'') has no OMOP
+equivalent, the corresponding concept ID is left at \texttt{0} rather than
+guessed. \texttt{Encounter} resources map to \texttt{cdm.visit\_occurrence};
+encounters missing \texttt{period.end} are excluded, since
+\texttt{visit\_end\_date} is \texttt{NOT NULL} in the OMOP DDL and no valid
+value can be synthesized.
+
+\subsection{CONDITION\_OCCURRENCE and MEASUREMENT}
+
+\texttt{Condition} resources have no date field of their own in this
+dataset; \texttt{condition\_start\_date} is instead borrowed from the
+linked visit's \texttt{visit\_start\_date}, a judgment call made explicit
+in the pipeline's documentation rather than left implicit in the SQL.
+ICD-9-CM/ICD-10-CM source codes are reformatted to match
+\texttt{cdm.concept.concept\_code} conventions (a decimal point inserted
+after the third character, e.g.\ \texttt{5715} $\to$ \texttt{571.5}) and
+resolved to standard SNOMED concepts via \texttt{CONCEPT\_RELATIONSHIP}.
+
+\texttt{Observation} resources map to \texttt{cdm.measurement}.
+\texttt{measurement\_date} is taken directly from \texttt{effectiveDateTime}
+(unlike \texttt{Condition}, \texttt{Observation} carries its own date).
+Value handling covers three shapes present in the data:
+\texttt{valueQuantity} (numeric, with optional \texttt{referenceRange}),
+\texttt{valueString}, and \texttt{valueCodeableConcept} display text as a
+fallback. \texttt{value\_source\_value} is truncated to 50 characters via
+\texttt{LEFT(...,\ 50)} to satisfy the corresponding \texttt{varchar(50)}
+schema constraint -- a deliberate, documented lossy step rather than a
+silent one; the untruncated text is not preserved elsewhere in the
+pipeline. Observations are resolved to standard concepts only when tagged
+with a coding whose \texttt{system} is \texttt{http://loinc.org}; other
+coding systems present in the source data have no standard-vocabulary
+target in this pipeline's scope.
+
+\section{Concept-Mapping Coverage: A Decomposed Metric}
+\label{sec:coverage}
+
+A single concept-mapping coverage percentage conflates two structurally
+different situations: a source record that simply never carried a
+mappable code, and a source record whose code exists but has no
+corresponding entry in \texttt{CONCEPT\_RELATIONSHIP}. Reporting only a
+blended figure can misrepresent which of these is occurring, with direct
+consequences for how a reader should interpret pipeline correctness.
+
+For \texttt{CONDITION\_OCCURRENCE}, this distinction does not materially
+matter: staged condition records overwhelmingly carry an ICD-9-CM or
+ICD-10-CM code, so a single ratio is already representative. Of 5{,}051
+loaded rows, 4{,}872 (96.5\%) resolved to a standard SNOMED concept; the
+unmapped 179 rows (3.5\%) are predominantly administrative or status codes
+(e.g.\ ``Do not resuscitate status'') with no corresponding disease
+concept, not resolution failures.
+
+For \texttt{MEASUREMENT}, the distinction is material. Of 813{,}540 loaded
+observations, only 9{,}042 (1.11\%) carry a coding tagged
+\texttt{system\ =\ http://loinc.org}; the remaining 98.9\% use MIMIC's own
+local chartevents/labevents item dictionaries. This was confirmed against
+two independent sources -- the FHIR export's coding systems and the base
+(non-FHIR) MIMIC-IV Clinical Database Demo's \texttt{d\_labitems}/
+\texttt{d\_items} tables -- neither of which provides a LOINC crosswalk for
+these local dictionaries. Reported alone, 1.11\% coverage could plausibly
+be read as a mapping-logic defect. Decomposing the statistic shows
+otherwise: of the 9{,}042 rows that carried a real LOINC code, all 9{,}042
+(100\%) resolved successfully via \texttt{CONCEPT\_RELATIONSHIP}. The
+mapped-row count equals the LOINC-coded-row count exactly. The 1.11\%
+figure is therefore a source-data coverage ceiling, verified rather than
+assumed, and not evidence of a defect in the mapping implementation.
+
+We suggest this decomposition -- coverage among rows carrying a
+vocabulary-eligible code, reported separately from overall table coverage
+-- as a general practice for OMOP ETL reporting whenever a source
+system's code coverage for a given domain and vocabulary is not close to
+complete, since a single blended number is otherwise ambiguous between two
+causes with very different engineering implications.
+
+\section{Testing Methodology}
+\label{sec:testing}
+
+\subsection{The licensing constraint}
+
+OHDSI Athena vocabulary files require individual license acceptance prior
+to download and are not licensed for redistribution. This rules out both
+of the obvious approaches to CI testing: automating a real vocabulary
+download (no scriptable license acceptance, and no right to redistribute
+the result even if it could be scripted), and committing any slice of a
+real \texttt{CONCEPT}/\texttt{CONCEPT\_RELATIONSHIP} extract to a public
+repository.
+
+\subsection{Synthetic fixture design}
+
+The pipeline's CI suite instead constructs a small, entirely synthetic
+fixture: fabricated FHIR resources (3 patients, 4 encounters, 4 conditions,
+7 observations) and a structurally valid but fabricated OMOP vocabulary
+subset, run through the pipeline's real, unmodified code. The vocabulary
+fixture distinguishes two categories of concept differently. Fixed
+reference concepts that pipeline SQL hardcodes by numeric ID (gender, race,
+ethnicity, visit type, type concept, and concept ID 0) use their real OMOP
+IDs, since these are stable identifiers referenced directly by the
+transform logic, not the copyrighted curated content of a vocabulary.
+Source and standard clinical concepts (ICD-9-CM/ICD-10-CM/SNOMED/LOINC) are
+fully fabricated, since these are resolved dynamically by code lookup
+rather than hardcoded, and fabricating them avoids any licensing concern
+entirely.
+
+The fixture was deliberately constructed to include adversarial cases
+rather than a happy path alone: one encounter is missing
+\texttt{period.end} (excluding it from \texttt{VISIT\_OCCURRENCE} by
+design), and one condition and one observation are linked to that
+excluded encounter -- a combination never exercised by the real
+637-encounter dataset, in which zero encounters were missing a date.
+
+\subsection{Two edge cases found}
+
+Running the adversarial fixture surfaced two distinct behaviors, handled
+differently based on the OMOP schema's own constraints.
+
+\textbf{MEASUREMENT (fixed).} \texttt{visit\_occurrence\_id} was originally
+resolved from the visit ID crosswalk alone, which assigns an identifier to
+every encounter unconditionally, regardless of whether that encounter's
+visit actually loaded into \texttt{cdm.visit\_occurrence}. Against the
+fixture, this produced a foreign-key violation that aborted the entire
+multi-row \texttt{INSERT...SELECT} statement -- meaning a single excluded
+encounter could have zeroed out all 813{,}540 real measurement rows had one
+existed in the production data. The fix changes the join against
+\texttt{cdm.visit\_occurrence} to a \texttt{LEFT JOIN}, selecting
+\texttt{NULL} when the visit never loaded. This is valid because
+\texttt{MEASUREMENT.visit\_occurrence\_id} is nullable and
+\texttt{MEASUREMENT} carries its own date independent of the visit. The fix
+was reverified as a no-op against the real Phase 3 load (zero of 637 real
+encounters were excluded, so the join always resolved).
+
+\textbf{CONDITION\_OCCURRENCE (documented limitation, not fixed).} The
+analogous case for conditions silently drops the row instead of failing:
+no error, no log entry, simply absent from \texttt{cdm.condition\_occurrence}.
+This cannot be fixed the same way, because \texttt{condition\_start\_date}
+is \texttt{NOT NULL} and \texttt{CONDITION\_OCCURRENCE} has no date field
+of its own to fall back on -- it borrows the visit's date by design
+(Section 4.2). A \texttt{LEFT JOIN} here would only convert a foreign-key
+failure into a \texttt{NOT NULL} failure. This is documented as a genuine
+structural limitation of the current design, not patched, and guarded by a
+regression test asserting the exact expected row count so that a future
+change to this behavior is noticed rather than passing silently.
+
+\subsection{CI architecture}
+
+Continuous integration (GitHub Actions) provisions PostgreSQL 16 via a
+native \texttt{services:} container, applies the OMOP v5.4 DDL, loads the
+fixture through the same scripts and SQL used against real data, and
+asserts 20 exact expected values (row counts, per-patient
+gender/race/ethnicity resolution, both edge-case behaviors above,
+concept-mapping counts, truncation, and referential integrity) via a
+dedicated test script. All environment-specific values (database host,
+port, credentials, source data directory) are parameterized via standard
+\texttt{PG*} environment variables read natively by \texttt{psql}, so local
+and CI execution share identical code paths.
+
+\section{Results}
+
+Table~\ref{tab:results} summarizes verified pipeline output on the real
+100-patient dataset. Every figure was confirmed by direct query against a
+populated database, not derived from code inspection alone.
+
+\begin{table}[h]
+\centering
+\caption{Verified pipeline output, MIMIC-IV Clinical Database Demo on FHIR.}
+\label{tab:results}
+\begin{tabular}{lrl}
+\toprule
+Table & Rows loaded & Notes \\
+\midrule
+\texttt{cdm.person} & 100 & 0 orphaned references \\
+\texttt{cdm.visit\_occurrence} & 637 & 0 orphaned \texttt{person\_id} \\
+\texttt{cdm.condition\_occurrence} & 5{,}051 & 96.5\% concept-mapped \\
+\texttt{cdm.measurement} & 813{,}540 & 1.11\% mapped; 100\% within \\
+& & the LOINC-coded subset \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+CI (GitHub Actions) passes against the synthetic fixture on every push,
+confirmed via an actual GitHub Actions run rather than local simulation
+alone. One CI-only failure occurred during development: two shell scripts
+lost their git-tracked executable bit on a Windows/OneDrive-backed
+checkout, causing an exit-126 permission error when invoked as
+\texttt{./script.sh}. This was fixed at the git-index level
+(\texttt{git update-index --chmod=+x}) and defensively, by invoking scripts
+via \texttt{bash script.sh} rather than relying on the executable bit at
+all.
+
+\subsection{Demonstration query}
+
+As a concrete illustration that the loaded CDM supports genuine
+cross-table analytic questions, we ran a query joining
+\texttt{CONDITION\_OCCURRENCE}, \texttt{CONCEPT}, \texttt{VISIT\_OCCURRENCE},
+and \texttt{MEASUREMENT} to compute, for each standard condition concept,
+the number of distinct patients diagnosed with it and their average count
+of measurements recorded during the diagnosing visit. Table~\ref{tab:demo}
+shows the top results. The leading chronic-disease conditions (hypertension,
+hyperlipidemia, type 2 diabetes) are consistent with expectations for an
+ICU-derived cohort, and average measurement intensity per visit is higher
+for acuity-associated conditions (acidosis, thrombocytopenia, acute kidney
+injury) than for chronic-but-stable conditions (hypertension, tobacco
+dependence), a pattern consistent with clinical plausibility though not
+independently validated against ground truth.
+
+\begin{table}[h]
+\centering
+\small
+\caption{Demonstration query output (top 8 of 20 by patient count).}
+\label{tab:demo}
+\begin{tabular}{lrrr}
+\toprule
+Condition & Patients & Diagnoses & Avg.\ meas./visit \\
+\midrule
+History of event & 72 & 320 & 301.0 \\
+Essential hypertension & 55 & 134 & 186.9 \\
+Hyperlipidemia & 47 & 114 & 267.3 \\
+Acute kidney injury & 32 & 77 & 440.7 \\
+Type 2 diabetes mellitus & 30 & 102 & 224.2 \\
+Atrial fibrillation & 27 & 68 & 363.1 \\
+Anemia & 26 & 45 & 401.2 \\
+Urinary tract infectious disease & 23 & 47 & 318.9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Limitations}
+
+We state these plainly rather than minimize them. \texttt{MEASUREMENT}
+concept-mapping coverage (1.11\%) is a hard ceiling imposed by the source
+data, not something further mapping logic can improve without a different
+data source or a manually constructed local-code-to-LOINC crosswalk, which
+was out of scope for this work. A condition whose linked encounter is
+missing a start or end date is silently absent from
+\texttt{CONDITION\_OCCURRENCE}, a behavior never observed in the real
+100-patient dataset (zero such cases existed) but present by construction
+and guarded by a regression test. \texttt{LOCATION}, \texttt{ORGANIZATION},
+and \texttt{PROVIDER} are not modeled. CI validates pipeline
+\emph{code} correctness against known synthetic inputs; it cannot and does
+not validate real-world concept-mapping coverage or data quality, which
+were verified separately against the real load. \texttt{DRUG\_EXPOSURE} is
+not implemented.
+
+\section{Future Work}
+\label{sec:future}
+
+Planned extensions include \texttt{DRUG\_EXPOSURE} via RxNorm; a
+comorbidity co-occurrence network over \texttt{CONDITION\_OCCURRENCE}
+(nodes as standard condition concepts, edges weighted by shared-patient
+count), as a first network-analysis layer over the verified CDM data; a
+predictive model (e.g.\ readmission or in-hospital mortality risk) using
+\texttt{PERSON}/\texttt{VISIT\_OCCURRENCE}/\texttt{CONDITION\_OCCURRENCE}/
+\texttt{MEASUREMENT} as features, as a first analytical/ML layer beyond
+ETL and standards mapping; and extension to a wearable-native source (e.g.\
+WESAD or PPG-DaLiA), mapping physiological signals into FHIR
+\texttt{Observation}/\texttt{Device} and then into \texttt{MEASUREMENT}.
+
+\section{Conclusion}
+
+We presented a verified, open FHIR-to-OMOP CDM v5.4 ETL pipeline covering
+four clinical resource types on the MIMIC-IV-FHIR demo dataset, with every
+quantitative claim confirmed against a running database rather than
+assumed. Beyond the implementation, we argue for decomposing
+concept-mapping coverage metrics to separate source-data ceilings from
+mapping-logic defects, and we describe a synthetic-fixture CI methodology
+that tests real pipeline code under the real licensing constraints that
+apply to any OMOP ETL project built on OHDSI's Athena vocabularies. Two
+edge cases surfaced by deliberately adversarial test design, absent from
+the real dataset only by chance, illustrate a broader point: an ETL
+pipeline validated only against the data it happens to have seen carries
+untested assumptions that a sufficiently different cohort could violate.
+
+\section*{Availability}
+\label{sec:availability}
+Source code, SQL, tests, and CI configuration are publicly available at
+\url{https://github.com/Saileshwar1625/fhir-omop-etl} (tag \texttt{v1.0}).
+
+\bibliographystyle{plain}
+\begin{thebibliography}{9}
+
+\bibitem{hl7fhir}
+HL7 International.
+\emph{FHIR Release 4 (R4)}.
+\url{https://hl7.org/fhir/R4/}.
+
+\bibitem{hripcsak2015ohdsi}
+Hripcsak G, Duke JD, Shah NH, Reich CG, Huser V, Schuemie MJ, Suchard MA,
+Park RW, Wong ICK, Rijnbeek PR, van der Lei J, Pratt N, Norén GN, Li Y-C,
+Stang PE, Madigan D, Ryan PB.
+Observational Health Data Sciences and Informatics (OHDSI): Opportunities
+for Observational Researchers.
+\emph{Stud Health Technol Inform}. 2015;216:574--578.
+
+\bibitem{bennett2023mimicfhir}
+Bennett AM, Ulrich H, van Damme P, Wiedekopf J, Johnson AE.
+MIMIC-IV on FHIR: converting a decade of in-patient data into an
+exchangeable, interoperable format.
+\emph{J Am Med Inform Assoc}. 2023;30(4):718--725.
+\url{https://doi.org/10.1093/jamia/ocad002}.
+
+\bibitem{bennett2025physionet}
+Bennett A, Ulrich H, Wiedekopf J, Szul P, Grimes J, Johnson A.
+MIMIC-IV Clinical Database Demo on FHIR (version 2.1.0).
+\emph{PhysioNet}. 2025.
+\url{https://doi.org/10.13026/vphg-y548}.
+
+\bibitem{johnson2023mimiciv}
+Johnson AEW, Bulgarelli L, Shen L, Gayles A, Shammout A, Horng S,
+Pollard TJ, Hao S, Moody B, Gow B, Lehman L-wH, Celi LA, Mark RG.
+MIMIC-IV, a freely accessible electronic health record dataset.
+\emph{Sci Data}. 2023;10:1.
+\url{https://doi.org/10.1038/s41597-022-01899-x}.
+
+\bibitem{goldberger2000physionet}
+Goldberger AL, Amaral LAN, Glass L, Hausdorff JM, Ivanov PCh, Mark RG,
+Mietus JE, Moody GB, Peng C-K, Stanley HE.
+PhysioBank, PhysioToolkit, and PhysioNet: Components of a New Research
+Resource for Complex Physiologic Signals.
+\emph{Circulation}. 2000;101(23):e215--e220.
+
+\bibitem{ohdsi_cdm}
+OHDSI.
+\emph{OMOP Common Data Model}, version 5.4.0.
+\url{https://github.com/OHDSI/CommonDataModel}.
+
+\end{thebibliography}
+
+\end{document}

@@ -7,6 +7,12 @@ concept mapping, CI + testing) is complete. This started as an evening/weekend p
 work (see "Planned" below) continues past v1.0. Nothing here is claimed as finished unless it has
 working, tested code behind it, with verification queries run and their results checked.
 
+**Technical report:** [`docs/technical-report.pdf`](docs/technical-report.pdf) — a full write-up
+covering methodology, the decomposed concept-mapping coverage metric, the fixture-based CI
+approach, and verified results. Written as an engineering/methodology report, not a claim of
+novel research (see the report's own abstract). LaTeX source in
+[`docs/technical-report.tex`](docs/technical-report.tex).
+
 ## Status
 
 ### Completed
