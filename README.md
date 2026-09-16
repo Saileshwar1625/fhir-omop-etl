@@ -1,11 +1,21 @@
 # FHIR → OMOP CDM ETL Pipeline
 
-An ETL pipeline that maps FHIR clinical resources into the OMOP Common Data Model (CDM) v5.4,
-built on the MIMIC-IV Clinical Database Demo on FHIR (100 de-identified patients). **`v1.0`
-tagged (Sept 13, 2026)** — v1 scope (Phases 0–4: schema, staging load, PERSON/VISIT_OCCURRENCE,
-concept mapping, CI + testing) is complete. This started as an evening/weekend project; stretch
-work (see "Planned" below) continues past v1.0. Nothing here is claimed as finished unless it has
-working, tested code behind it, with verification queries run and their results checked.
+**The problem:** electronic health record systems increasingly expose clinical data through FHIR,
+an interoperability standard built for point-of-care data exchange — one patient, one system,
+retrieved as care happens. Large-scale observational health research runs on a different
+standard, OMOP's Common Data Model (CDM), which fixes schema and terminology so the same analytic
+code runs unmodified across sites. FHIR optimizes for exchange; OMOP optimizes for standardized,
+cross-site analysis. Getting data from the first into the second is a real, named translation
+problem in health informatics, not a solved one — and it's what this pipeline does.
+
+**What this is:** an ETL pipeline that maps FHIR clinical resources (Patient, Encounter,
+Condition, Observation) from the MIMIC-IV Clinical Database Demo on FHIR (100 de-identified ICU
+patients, 819,328 total source records) into four OMOP CDM v5.4 tables (`PERSON`,
+`VISIT_OCCURRENCE`, `CONDITION_OCCURRENCE`, `MEASUREMENT`), with terminology mapping through the
+OHDSI standard vocabularies and every quantitative claim below verified against a running
+database, not assumed. **`v1.0` tagged (Sept 13, 2026)** — v1 scope (Phases 0–4: schema, staging
+load, transforms, concept mapping, CI + testing) is complete. This started as an evening/weekend
+project; stretch work (see "Planned" below) continues past v1.0.
 
 **Technical report:** [`docs/technical-report.pdf`](docs/technical-report.pdf) — a full write-up
 covering methodology, the decomposed concept-mapping coverage metric, the fixture-based CI
