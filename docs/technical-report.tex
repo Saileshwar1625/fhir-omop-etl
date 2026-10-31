@@ -47,7 +47,10 @@ and I present a decomposed metric that separates source-data coverage
 ceilings from mapping-logic failures, distinguishing a case where low
 coverage (1.11\%) reflects a true source-data limitation, fully verified
 against two independent data releases, from a case (96.5\%) where nearly all
-records carry a mappable code. Second, I describe a synthetic-fixture
+records carry a mappable code. A per-patient breakdown shows that the
+low measurement ceiling is also uneven: 36 of the 100 patients have no
+mapped measurements, because only emergency-department observations carry
+LOINC codes in this source. Second, I describe a synthetic-fixture
 testing methodology developed specifically to satisfy continuous-integration
 (CI) testing under a real constraint common to OMOP-based projects: OHDSI
 Athena vocabulary files require individual license acceptance and cannot be
@@ -267,6 +270,59 @@ system's code coverage for a given domain and vocabulary is not close to
 complete, since a single blended number is otherwise ambiguous between two
 causes with very different engineering implications.
 
+\subsection{Distribution across patients}
+\label{sec:perpatient}
+
+The overall figures above do not show who is affected. I computed the same
+two ratios for each of the 100 patients with
+\texttt{scripts/per\_patient\_coverage.py}, which writes
+\texttt{per\_patient\_coverage.csv} in the repository. The script's totals
+reproduce the overall figures exactly (9{,}042 of 813{,}540 measurements;
+4{,}872 of 5{,}051 conditions). Table~\ref{tab:perpatient} summarizes the
+per-patient results.
+
+\begin{table}[h]
+\centering
+\caption{Per-patient concept-mapping coverage (100 patients). Coverage is
+mapped rows divided by source resources for that patient.}
+\label{tab:perpatient}
+\begin{tabular}{lrr}
+\toprule
+ & \texttt{MEASUREMENT} & \texttt{CONDITION\_OCCURRENCE} \\
+\midrule
+Median per-patient coverage & 0.52\% & 98.1\% \\
+Minimum & 0\% & 62.5\% \\
+Maximum & 26.76\% & 100\% \\
+Patients with no mapped rows & 36 & 0 \\
+Patients below 100\% & 100 & 57 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Measurement coverage is low for almost every patient and zero for more than
+a third of them. The cause is visible in the source files. Of the nine
+observation files loaded, only the two emergency-department files
+(\texttt{MimicObservationED}, 2{,}742 observations, and
+\texttt{MimicObservationVitalSignsED}, 6{,}300 observations) use LOINC, and
+together they hold exactly the 9{,}042 LOINC-coded observations. The other
+seven files (chart events, lab events, output events, datetime events, and
+three microbiology files) use MIMIC's local code systems. I checked this
+patient by patient in the raw FHIR files: 64 patients have an
+emergency-department encounter, exactly those 64 have LOINC-coded
+observations, and the 36 patients without such an encounter have none.
+Because a measurement row can only map through a LOINC code, and every
+LOINC-coded row resolved, a patient's mapped count equals their LOINC-coded
+count. The 36 patients with no emergency-department encounter are therefore
+the 36 with no mapped measurements.
+
+This means measurement coverage here depends on a patient's care pathway,
+not only on the vocabulary. An analysis restricted to standard measurement
+concepts would have no measurements at all for these 36 patients, and
+neither the blended figure (1.11\%) nor the decomposed one (100\% within
+the LOINC-coded subset) reveals that. Condition coverage is far more even
+(median 98.1\%, minimum 62.5\%), because condition records
+overwhelmingly carry ICD codes.
+
 \section{Testing Methodology}
 \label{sec:testing}
 
@@ -433,7 +489,14 @@ and \texttt{PROVIDER} are not modeled. CI validates pipeline
 \emph{code} correctness against known synthetic inputs; it cannot and does
 not validate real-world concept-mapping coverage or data quality, which
 were verified separately against the real load. \texttt{DRUG\_EXPOSURE} is
-not implemented.
+not implemented. The per-patient analysis covers 100 patients from a single
+demo export. The pattern that only emergency-department observations carry
+LOINC codes is a property of how this export assigns code systems, and may
+not hold for the full MIMIC-IV-on-FHIR release or other sources. The link
+between the 36 zero-coverage patients and the 36 patients without an
+emergency-department encounter rests on matching counts and on equal
+mapped and LOINC-coded totals, not on a row-by-row join of \texttt{person\_id}
+to source patient identifiers.
 
 \section{Future Work}
 \label{sec:future}
@@ -467,7 +530,7 @@ untested assumptions that a sufficiently different cohort could violate.
 \section*{Availability}
 \label{sec:availability}
 Source code, SQL, tests, and CI configuration are publicly available at
-\url{https://github.com/Saileshwar1625/fhir-omop-etl} (tag \texttt{v1.0.1}).
+\url{https://github.com/Saileshwar1625/fhir-omop-etl} (tag \texttt{v1.0.2}).
 
 \bibliographystyle{plain}
 \begin{thebibliography}{9}

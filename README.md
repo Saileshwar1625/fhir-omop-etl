@@ -300,6 +300,18 @@ measurement intensity per visit tracks roughly with acuity (acidosis, thrombocyt
 all conditions associated with sicker ICU patients — have the highest `avg_measurements_per_visit`,
 while hypertension and tobacco dependence, chronic but not acutely monitored, have the lowest).
 
+## Per-patient coverage
+
+The overall measurement coverage (1.11%, 9,042 of 813,540) is not spread evenly across patients. `scripts/per_patient_coverage.py` computes coverage for each of the 100 patients and writes `per_patient_coverage.csv`. Its totals reproduce the numbers above (9,042 / 813,540 measurements, 4,872 / 5,051 conditions).
+
+- **Measurements:** per-patient coverage has a median of 0.52% and a maximum of 26.76%. 36 of the 100 patients have no mapped measurements.
+- **Why:** in the MIMIC-IV FHIR demo, only the two emergency-department observation files (`MimicObservationED` and `MimicObservationVitalSignsED`, 9,042 observations in total) carry LOINC codes. The chart, lab, output, datetime and microbiology observation files use MIMIC's own code systems. All 36 zero-coverage patients have no emergency-department encounter, and all 64 patients who do have one have mapped measurements.
+- **Conditions:** coverage is higher and more even, with a median of 98.1% and a minimum of 62.5%. 57 patients are below 100%.
+
+## Process note
+
+Code and documentation were developed with AI assistance (Claude). I ran the pipeline on the real MIMIC-IV data and checked the results myself.
+
 ## Dataset citations
 
 This project uses:
